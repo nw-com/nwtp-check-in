@@ -311,8 +311,16 @@ button[disabled] { cursor: not-allowed; }
 .status-label.return { color: #0b8043; }
 .status-label.bad { color: #CC0000; }
 .status-label.leave-request { color: #f57c00; }
-/* 預設狀態標籤不指定顏色，依父層繼承 */
-.status-label { color: inherit; }
+/* 預設狀態標籤樣式：保持顏色由各狀態類別決定 */
+.status-label { color: inherit; font-weight: 300; font-size: inherit; }
+
+/* 首頁 F 行（班表狀態）指定文字顏色：上班日黑、值班日棕、休假日灰 */
+.home-layout .home-mid-stack .row-f .status-label.work { color: #000 !important; }
+.home-layout .home-mid-stack .row-f .status-label.arrive { color: #6b4e00 !important; }
+.home-layout .home-mid-stack .row-f .status-label.off { color: #9ca3af !important; }
+
+/* 表格中的狀態標籤字級與字重與儲存格一致 */
+.table .status-label { font-size: inherit; font-weight: inherit; }
 /* 首頁狀態列背景色（依狀態） */
 body.status-work .home-layout .home-mid-stack .row-g { background: #e6f4ea; }
 body.status-off .home-layout .home-mid-stack .row-g { background: #fce8e6; }
