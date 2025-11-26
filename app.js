@@ -145,29 +145,14 @@ function nowInTZ(tz) {
 }
 function getTwHolidaySetForYear(y) {
   try {
-    const natRaw = localStorage.getItem('twNationalHolidays');
-    const makeupRaw = localStorage.getItem('twMakeupHolidays');
-    const natCfg = natRaw ? JSON.parse(natRaw) : {};
-    const mkCfg = makeupRaw ? JSON.parse(makeupRaw) : {};
-    const natArr = (natCfg && natCfg[y]) || [];
-    const mkArr = (mkCfg && mkCfg[y]) || [];
-    if (Array.isArray(natArr) || Array.isArray(mkArr)) {
-      const set = new Set([].concat(natArr || [], mkArr || []));
-      if (set.size) return set;
-    }
-  } catch {}
-  const mmdd = (m, d) => `${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-  const base = [mmdd(1,1), mmdd(2,28), mmdd(4,4), mmdd(4,5), mmdd(5,1), mmdd(10,10)];
-  return new Set(base.map((s) => `${y}-${s}`));
-}
-function getTwAdjustedWorkdaySetForYear(y) {
-  try {
-    const raw = localStorage.getItem('twAdjustedWorkdays');
+    const raw = localStorage.getItem('twNationalHolidays');
     const cfg = raw ? JSON.parse(raw) : {};
     const arr = (cfg && cfg[y]) || null;
     if (Array.isArray(arr) && arr.length) return new Set(arr);
   } catch {}
-  return new Set();
+  const mmdd = (m, d) => `${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const base = [mmdd(1,1), mmdd(2,28), mmdd(4,4), mmdd(4,5), mmdd(5,1), mmdd(10,10)];
+  return new Set(base.map((s) => `${y}-${s}`));
 }
 function isTWNationalHoliday(date) {
   const y = date.getFullYear();
@@ -177,20 +162,10 @@ function isTWNationalHoliday(date) {
   const set = getTwHolidaySetForYear(y);
   return set.has(key);
 }
-function isTWAdjustedWorkday(date) {
-  const y = date.getFullYear();
-  const m = date.getMonth()+1;
-  const d = date.getDate();
-  const key = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-  const set = getTwAdjustedWorkdaySetForYear(y);
-  return set.has(key);
-}
 function defaultRosterStatusForDate(date) {
   const wd = date.getDay();
-  if (isTWNationalHoliday(date)) return '休假日';
-  if (isTWAdjustedWorkday(date)) return '上班日';
   const weekendOrFri = (wd === 0 || wd === 6 || wd === 5);
-  return weekendOrFri ? '休假日' : '上班日';
+  return (weekendOrFri || isTWNationalHoliday(date)) ? '休假日' : '上班日';
 }
 function formatDateYYYYMMDD(d) {
   return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate());
@@ -4398,6 +4373,7 @@ function hasFullAccessToTab(tab) {
       sel?.addEventListener("change", () => {
         refreshAddVisibility();
         updateRoster(currentDate);
+        document.getElementById("rosterCalendar")?.dispatchEvent(new Event("rosterPlansChanged"));
       });
       let currentDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
       function isHoliday(d) { return d.getDay() === 0 || d.getDay() === 6; }
@@ -6387,6 +6363,7 @@ function hasFullAccessToTab(tab) {
             viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1);
             renderMonth(viewDate);
           });
+          sel?.addEventListener("change", () => { renderMonth(viewDate); });
         }
 
         renderMonth(viewDate);
@@ -6690,25 +6667,35 @@ async function refreshSubtabBadges() {
   try {
     const leaderTabBtn = document.querySelector('.tab-btn[data-tab="leader"]');
     if (leaderTabBtn) {
-      const companies2 = Array.isArray(appState.companies) ? appState.companies : [];
-      const selectedCoId2 = appState.leaderCompanyFilter || '';
-      const selCo2 = companies2.find((c) => String(c.id||'') === String(selectedCoId2)) || null;
-      const isTw2 = selCo2 ? /台北/.test(String(selCo2.name||'')) : false;
-      const isTy2 = selCo2 ? /桃園/.test(String(selCo2.name||'')) : false;
-      const leaveCount2 = selCo2 ? (isTw2 ? leaveTw : (isTy2 ? leaveTy : leavePending)) : 0;
-      const appealCount2 = selCo2 ? (isTw2 ? appealTw : (isTy2 ? appealTy : appealPending)) : 0;
-      const makeupCount2 = selCo2 ? (isTw2 ? makeupTw : (isTy2 ? makeupTy : makeupPending)) : 0;
-      const totalPending = Number(leaveCount2 || 0) + Number(appealCount2 || 0) + Number(makeupCount2 || 0);
-      const hasMapAnomaly = !!document.querySelector('#leaderStatusTbody .status-flag.bad');
+      const recordTw = Number(changeTw || 0);
+      const recordTy = Number(changeTy || 0);
       let badge = leaderTabBtn.querySelector('.subtab-badge');
-      if (!totalPending && !hasMapAnomaly) { if (badge) badge.remove(); }
-      else {
+      if (recordTw > 0 || recordTy > 0) {
         if (!badge) { badge = document.createElement('span'); badge.className = 'subtab-badge'; leaderTabBtn.appendChild(badge); }
-        badge.textContent = totalPending > 0 ? String(totalPending) : '';
-        const breakdown = `請假:${Number(leaveCount2||0)} 計點:${Number(appealCount2||0)} 補卡:${Number(makeupCount2||0)}`;
-        const tip = totalPending > 0 ? breakdown : '地圖異常';
+        badge.textContent = `台北${recordTw}|桃園${recordTy}`;
+        const tip = `紀錄 台北:${recordTw} 桃園:${recordTy}`;
         badge.title = tip;
         badge.setAttribute('aria-label', tip);
+      } else {
+        const companies2 = Array.isArray(appState.companies) ? appState.companies : [];
+        const selectedCoId2 = appState.leaderCompanyFilter || '';
+        const selCo2 = companies2.find((c) => String(c.id||'') === String(selectedCoId2)) || null;
+        const isTw2 = selCo2 ? /台北/.test(String(selCo2.name||'')) : false;
+        const isTy2 = selCo2 ? /桃園/.test(String(selCo2.name||'')) : false;
+        const leaveCount2 = selCo2 ? (isTw2 ? leaveTw : (isTy2 ? leaveTy : leavePending)) : 0;
+        const appealCount2 = selCo2 ? (isTw2 ? appealTw : (isTy2 ? appealTy : appealPending)) : 0;
+        const makeupCount2 = selCo2 ? (isTw2 ? makeupTw : (isTy2 ? makeupTy : makeupPending)) : 0;
+        const totalPending = Number(leaveCount2 || 0) + Number(appealCount2 || 0) + Number(makeupCount2 || 0);
+        const hasMapAnomaly = !!document.querySelector('#leaderStatusTbody .status-flag.bad');
+        if (!totalPending && !hasMapAnomaly) { if (badge) badge.remove(); }
+        else {
+          if (!badge) { badge = document.createElement('span'); badge.className = 'subtab-badge'; leaderTabBtn.appendChild(badge); }
+          badge.textContent = totalPending > 0 ? String(totalPending) : '';
+          const breakdown = `請假:${Number(leaveCount2||0)} 計點:${Number(appealCount2||0)} 補卡:${Number(makeupCount2||0)}`;
+          const tip = totalPending > 0 ? breakdown : '地圖異常';
+          badge.title = tip;
+          badge.setAttribute('aria-label', tip);
+        }
       }
     }
   } catch {}
